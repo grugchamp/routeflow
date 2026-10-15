@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#7a1e17" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>RouteFlow - fastest route with multiple stops</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.js" crossorigin=""></script>
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; }
+    html, body, input, textarea, select, button { font-family: Roboto, Helvetica, Arial, sans-serif; font-size: 13px; color: #222; }
+    body { background: #fff; overflow-x: hidden; }
+    input, textarea, select { box-sizing: border-box; border: 1px solid #B6B6B6; border-radius: 3px; background: #fff; padding: 3px 5px; }
+    .hidden { display: none !important; }
+
+    /* heading */
+    #heading { height: 60px; line-height: 60px; white-space: nowrap; overflow: hidden; padding: 0 1em; color: #aaa; }
+    #heading h1 { float: left; margin: 0 1.5em 0 0; font-size: 22px; line-height: 60px; font-style: italic; font-weight: 900; color: #7a1e17; letter-spacing: -.5px; }
+    #heading h1 b { color: #c0392b; }
+    #heading a { color: #C0C0C0; text-decoration: none; margin-right: 1em; cursor: pointer; font-size: 14px; }
+    #heading a:hover { color: #111; }
+
+    /* bars */
+    #menu-canvas, #bottom-canvas { background: #f4f4f4; height: 43px; padding: 0 10px; display: flex; align-items: center; gap: 4px; overflow: hidden; }
+    #searchAddressInput { flex: 1 1 auto; min-width: 80px; max-width: 500px; height: 27px; color: #555; margin-right: 4px; }
+    #searchAddressInput::placeholder { color: #ccc; }
+    .grow { flex: 1; }
+    #status { font-size: 10px; color: #808080; white-space: nowrap; }
+    .spin { display: inline-block; width: 9px; height: 9px; margin-left: 4px; border: 2px solid #aaa; border-top-color: transparent; border-radius: 50%; animation: rot .8s linear infinite; vertical-align: middle; }
+    @keyframes rot { to { transform: rotate(360deg); } }
+
+    /* buttons (jQuery-UI look) */
+    .ui-button { position: relative; display: inline-flex; align-items: center; flex: none; margin: 0 .1em 0 0; padding: .4em 1em .4em 2.1em; cursor: pointer; user-select: none; background: #f4f4f4; border: 1px solid #B6B6B6; border-radius: 12px; color: #222; line-height: 1.4; transition: all 250ms ease-in-out; white-space: nowrap; }
+    .ui-button:hover { background: #fff; border-color: #9D9D9D; }
+    .ui-button:focus { outline: none; border-color: #7096ab; }
+    .ui-button:disabled { opacity: .35; cursor: default; }
+    .ui-button.plain { padding: .4em 1em; }
+    .ui-button svg { position: absolute; left: .5em; top: 50%; margin-top: -8px; width: 16px; height: 16px; fill: #454545; }
+    .icononly .ui-button:not(.plain), .ui-button.iconly { width: 2.6em; height: 2.6em; padding: 0; }
+    .icononly .ui-button:not(.plain) svg, .ui-button.iconly svg { left: 50%; margin-left: -8px; }
+    .icononly .ui-button:not(.plain) .t, .ui-button.iconly .t { display: none; }
+
+    /* map */
+    #map-canvas { width: 100%; background: #e8e8e8; position: relative; z-index: 0; }
+    .grey-tiles { filter: grayscale(.85) brightness(1.04) contrast(.95); }
+    .leaflet-container { font-family: Roboto, Helvetica, Arial, sans-serif; }
+    .popupContents { min-width: 18em; max-width: 30em; }
+    .popupContents p { margin: 0 0 8px; }
+    .popupContents .ui-button { margin: 1% 1% 1% 0; min-width: 48%; }
+    .smaller { font-size: 80%; color: #888; }
+    .mk-num { width: 26px; height: 26px; line-height: 26px; font-size: 11px; text-align: center; border: solid 3px #222; border-radius: 2px; background: #000; color: #FFF; }
+    .mk-arrow { position: relative; left: 10px; width: 0; height: 0; border-style: solid; border-color: #222 transparent transparent; border-width: 8px 6px 0; }
+    .mk-done { opacity: .6; }
+    .marker-pin { width: 32px; height: 37px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
+    .leaflet-tooltip { font-size: 10px; }
+    .tw { background: #3986ac; font-size: 80%; color: #FFF; padding: .1em .5em; }
+    .ord { background: #5ec8bd; font-size: 80%; color: #FFF; padding: .1em .5em; }
+    .ful { background: #aaa; font-size: 80%; color: #FFF; padding: .1em .5em; }
+    .comments { background: #ffb; font-size: .9em; margin: .5em 0; padding: .5em 1em; }
+
+    /* route instructions */
+    #route-canvas { margin: 10px; padding: 10px; font-size: 10pt; }
+    #route-canvas td { padding: .25em; font-size: 10pt; vertical-align: top; }
+    #route-canvas ul { margin: 0; padding: 0 0 0 1.2em; }
+    #performance { margin: 10px 0; padding: 5px; background: #FF0; }
+    #copyright { padding: 1em; color: #AAA; font-size: .85em; }
+    #copyright a { color: #AAA; }
+
+    /* dialogs */
+    .overlay { position: fixed; inset: 0; background: #262b33; opacity: .7; z-index: 1000; }
+    .ui-dialog { position: fixed; z-index: 1001; background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.6); display: flex; flex-direction: column; max-width: calc(100vw - 20px); max-height: calc(100vh - 20px); resize: both; overflow: hidden; min-width: 240px; animation: fade .2s; }
+    @keyframes fade { from { opacity: 0; } }
+    .ui-dialog .bar { padding: .7em 2.5em .6em 1em; background: #f4f4f4; border-radius: 6px; cursor: move; position: relative; flex: none; touch-action: none; }
+    .ui-dialog .x { position: absolute; right: .7em; top: 50%; margin-top: -9px; width: 18px; height: 18px; border: 0; padding: 0; background: #999; border-radius: 50%; cursor: pointer; }
+    .ui-dialog .x svg { width: 14px; height: 14px; fill: #fff; margin-top: 2px; }
+    .ui-dialog .content { padding: .7em 1em; overflow: auto; flex: 1; }
+    .ui-dialog .content p { margin: 0 0 1em; }
+    .ui-dialog .pane { padding: .3em 1em .5em; text-align: right; flex: none; }
+    .ui-dialog .pane .ui-button { margin: .4em .2em; }
+    .ui-progressbar { height: 16px; background: #eee; border-radius: 6px; overflow: hidden; border: 1px solid #B6B6B6; }
+    .ui-progressbar div { height: 100%; width: 0; background: #3986ac; transition: width .3s; }
+    .tabs { display: flex; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; border-bottom: 1px solid #B6B6B6; }
+    .tabs a { display: block; padding: .5em .9em; font-size: 12px; cursor: pointer; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; }
+    .tabs a.on { background: #fff; border-color: #B6B6B6; margin-bottom: -1px; }
+    .tabpanel { padding: 1em; border: 1px solid #B6B6B6; border-top: 0; }
+    .ptable td { padding: .4em .5em 0 0; }
+    .ptable input:not([type=checkbox]), .ptable select { width: 100%; max-width: 220px; }
+    #locations-list { list-style: none; padding: 0; margin: 0; white-space: nowrap; }
+    #locations-list li { padding: 4px 0; border-bottom: 1px solid #F4F4F4; overflow: hidden; text-overflow: ellipsis; }
+    #locations-list li.active { background: #e8f2fe; }
+    #locations-list li.done a { color: #aaa; }
+    #locations-list li.over { border-top: 2px solid #3986ac; }
+    #locations-list li[draggable=true] { cursor: grab; }
+    #locations-list a { color: #222; text-decoration: none; }
+    #locations-list .pin { width: 14px; height: 16px; vertical-align: bottom; margin-right: 5px; }
+    .stopnum { display: inline-block; width: 14px; height: 16px; margin-right: 6px; line-height: 16px; text-align: center; font-size: 8px; color: #FFF; background: #000; vertical-align: bottom; }
+    .ff { border: solid .2em #aaa; margin: 0 0 1em; }
+    .ff .head { background: #aaa; color: #fff; padding: .5em; }
+    .ff .body { padding: 1em .5em; }
+    .ff .btns { background: #eee; padding: .5em; display: flex; flex-wrap: wrap; gap: 6px; }
+    .ff .btns .r { margin-left: auto; }
+    #sugg { position: fixed; z-index: 1100; background: #fff; border: 1px solid #B6B6B6; list-style: none; margin: 0; padding: 0; box-shadow: 0 2px 6px rgba(0,0,0,.3); max-width: 500px; }
+    #sugg li { padding: 8px; cursor: pointer; border-bottom: 1px solid #f0f0f0; }
+    #sugg li:hover { background: #e8f2fe; }
+
+    @media (max-width: 800px) {
+      .no-mobile { display: none !important; }
+      .ui-dialog { resize: none; }
+    }
+    @media print {
+      .no-print, .leaflet-control-zoom { display: none !important; }
+      #route-canvas { margin: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div id="page">
+    <div id="heading" class="no-print no-mobile">
+      <h1>Route<b>Flow</b></h1>
+      <a data-act="about">About</a><a data-act="help">Help</a>
+    </div>
+
+    <div id="menu-canvas" class="no-print">
+      <input id="searchAddressInput" maxlength="255" placeholder="Enter address here" autocomplete="off" />
+      <button class="ui-button" data-act="search" title="Search address on the map" data-i="search"><span class="t">Search</span></button>
+      <span class="grow"></span>
+      <button class="ui-button" data-act="import" title="Import many addresses at once" data-i="copy"><span class="t">Import</span></button>
+      <button class="ui-button" data-act="addresses" title="List and edit your addresses on the map" data-i="pin"><span class="t">Addresses</span></button>
+      <button class="ui-button" data-act="options" title="Options" data-i="gear"><span class="t">Options</span></button>
+    </div>
+
+    <div id="map-canvas"></div>
+
+    <div id="bottom-canvas" class="no-print">
+      <button class="ui-button" data-act="plan" id="planBtn" title="Find the fastest route by sorting all addresses on the map" data-i="car"><span class="t">Find route</span></button>
+      <button class="ui-button hidden" data-act="fulfill" id="fulfillBtn" title="Fulfill" data-i="play"><span class="t">Fulfill</span></button>
+      <button class="ui-button no-mobile" data-act="print" title="Print the map and the route description" data-i="print"><span class="t">Print</span></button>
+      <button class="ui-button" data-act="download" title="Download the route for your navigation system" data-i="down"><span class="t">Download</span></button>
+      <button class="ui-button" data-act="share" title="Share this route with others or save it" data-i="mail"><span class="t">Share</span></button>
+      <button class="ui-button" data-act="reset" title="Start over, all addresses will be removed" data-i="trash"><span class="t">Reset</span></button>
+      <span class="grow"></span>
+      <span id="status"></span>
+    </div>
+
+    <div id="route-canvas" class="hidden"></div>
+
+    <div id="footer-canvas" class="no-print no-mobile">
+      <div id="copyright">© RouteFlow. Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors. Routing by OSRM.</div>
+    </div>
+  </div>
+  <ul id="sugg" class="hidden"></ul>
+  <script src="./app.js"></script>
+</body>
+</html>
